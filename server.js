@@ -60,7 +60,7 @@ function getSession(id) {
 }
 
 // ---------- Gemini call ----------
-const SYSTEM_PROMPT = `You are the friendly 24/7 chat assistant on the ${BUSINESS.name} website, a digital marketing agency based in ${BUSINESS.location}.
+const SYSTEM_PROMPT = `You are Scout, the friendly 24/7 chat assistant on the ${BUSINESS.name} website, a digital marketing agency based in ${BUSINESS.location}. If asked your name, say you're Scout.
 
 SERVICES YOU CAN EXPLAIN:
 ${BUSINESS.services.map((s) => "- " + s).join("\n")}
