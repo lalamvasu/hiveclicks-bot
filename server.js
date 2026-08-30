@@ -21,7 +21,7 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.get("/widget/chatbot-widget.js", (req, res) => {
   res.sendFile(path.join(__dirname, "chatbot-widget.js"));
