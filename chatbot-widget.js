@@ -84,7 +84,7 @@
       font-family:inherit;resize:none;}\
     .hc-input:focus{border-color:" + HONEY + ";}\
     .hc-send{background:" + INK + ";color:#fff;border:none;border-radius:10px;width:38px;cursor:pointer;\
-      display:flex;align-items:center;justify-content:center;flex-shrink:0;}\
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px;line-height:1;}\
     .hc-send:hover{background:" + HONEY_DARK + ";}\
     .hc-send:disabled{opacity:.4;cursor:default;}\
     .hc-fallback{margin-top:6px;font-size:12px;color:" + SLATE + ";}\
@@ -114,9 +114,7 @@
       <div class='hc-body' id='hcBody'></div>\
       <div class='hc-footer'>\
         <textarea class='hc-input' id='hcInput' rows='1' placeholder='Type a message...'></textarea>\
-        <button class='hc-send' id='hcSend' aria-label='Send'>\
-          <svg width='16' height='16' viewBox='0 0 24 24' fill='none'><path d='M3 20l18-8L3 4l0 7 12 1-12 1z' fill='#fff'/></svg>\
-        </button>\
+        <button class='hc-send' id='hcSend' aria-label='Send'>&#10148;</button>\
       </div>\
     </div>\
   ";
