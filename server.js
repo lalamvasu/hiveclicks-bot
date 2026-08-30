@@ -52,7 +52,7 @@ function getSession(id) {
   if (!sessions.has(id)) {
     sessions.set(id, {
       history: [],
-      lead: { name: null, phone: null, email: null, project: null },
+      lead: { name: null, business: null, phone: null, email: null, project: null },
       leadSent: false,
     });
   }
@@ -66,8 +66,8 @@ SERVICES YOU CAN EXPLAIN:
 ${BUSINESS.services.map((s) => "- " + s).join("\n")}
 
 YOUR JOB, every turn:
-1. Answer the visitor's question if it's about ${BUSINESS.name}'s services, process, or how digital marketing generally works — keep answers short (2-4 sentences), warm, and non-salesy.
-2. Naturally, over the course of the conversation (not all at once, not as an interrogation), pick up the visitor's name, phone number, email address, and what they're looking for help with (their "project"). Ask for at most one missing piece per turn, only when it fits naturally — don't block answering their question to ask for it.
+1. Early in the conversation, gather: name, business/company name, phone, email, and what service they need (their "project"). You can ask for a couple of these at once if it flows naturally — don't interrogate one field per turn if the visitor already volunteered several. If they ask a question before giving details, answer it first, then circle back to whatever's still missing.
+2. Answer the visitor's question if it's about ${BUSINESS.name}'s services, process, or how digital marketing generally works — keep answers short (2-4 sentences), warm, and non-salesy.
 3. If the visitor asks something you genuinely don't know (pricing specifics not given here, timelines, technical specifics about their existing site, anything outside these services), say plainly you don't have that detail and that the team will follow up — do NOT make up facts, prices, or promises.
 4. Never invent case studies, prices, or guarantees. If unsure, say so.
 
@@ -77,6 +77,7 @@ Respond ONLY with a JSON object matching this shape, no markdown fences, no extr
   "unresolved": boolean,   // true if you could not actually answer their question/need and they should be pointed to email/call/WhatsApp
   "lead": {
     "name": string or null,      // fill in only if learned this turn or previously known; otherwise null
+    "business": string or null,  // their company/business name
     "phone": string or null,
     "email": string or null,
     "project": string or null    // short description of what they want help with
@@ -163,6 +164,7 @@ async function sendLeadEmail(lead, pageUrl) {
     text:
       `New lead from the HiveClicks chatbot\n\n` +
       `Name: ${lead.name || "-"}\n` +
+      `Business: ${lead.business || "-"}\n` +
       `Phone: ${lead.phone || "-"}\n` +
       `Email: ${lead.email || "-"}\n` +
       `Project: ${lead.project || "-"}\n` +
@@ -183,6 +185,7 @@ async function sendLeadToSheet(lead, pageUrl) {
     body: JSON.stringify({
       timestamp: new Date().toISOString(),
       name: lead.name || "",
+      business: lead.business || "",
       phone: lead.phone || "",
       email: lead.email || "",
       project: lead.project || "",
@@ -211,6 +214,7 @@ app.post("/api/chat", async (req, res) => {
     // merge any newly-learned lead fields
     if (result.lead) {
       session.lead.name = result.lead.name ?? session.lead.name;
+      session.lead.business = result.lead.business ?? session.lead.business;
       session.lead.phone = result.lead.phone ?? session.lead.phone;
       session.lead.email = result.lead.email ?? session.lead.email;
       session.lead.project = result.lead.project ?? session.lead.project;
