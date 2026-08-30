@@ -181,16 +181,33 @@
     if (!opened) {
       opened = true;
       addMsg(
-        "Hi, I'm Scout! \uD83D\uDC1D I help out here at HiveClicks. To get you to the right person fast, could you share:\n\u2022 Your name\n\u2022 Business/company name\n\u2022 Email\n\u2022 Phone number\n\u2022 What you're looking for help with (SEO, ads, website, social media, video, or automation)\n\nOr just ask me a question first — happy to help either way!",
+        "Hi, I'm Scout! \uD83D\uDC1D I help out here at HiveClicks. What's your name?",
         "bot"
       );
     }
     input.focus();
   }
   launcher.addEventListener("click", openPanel);
+  function notifyEndSession() {
+    if (!opened) return; // never started a real conversation
+    var payload = JSON.stringify({ sessionId: sessionId, pageUrl: location.href });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(API_BASE + "/api/end-session", new Blob([payload], { type: "application/json" }));
+    } else {
+      fetch(API_BASE + "/api/end-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+      }).catch(function () {});
+    }
+  }
+
   closeBtn.addEventListener("click", function () {
     panel.classList.remove("hc-open");
+    notifyEndSession();
   });
+  window.addEventListener("beforeunload", notifyEndSession);
   greetClose.addEventListener("click", function (e) {
     e.stopPropagation();
     greet.style.display = "none";
