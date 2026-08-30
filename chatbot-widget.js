@@ -18,10 +18,10 @@
   }
 
   // ---------- design tokens ----------
-  var INK = "#14171A";
-  var HONEY = "#F2A93B";
-  var HONEY_DARK = "#D98F1F";
-  var CREAM = "#FFF8EC";
+  var INK = "#12283D";
+  var HONEY = "#2DD4BF";
+  var HONEY_DARK = "#15B8A6";
+  var CREAM = "#F1FBFA";
   var SLATE = "#5B6470";
   var WHITE = "#FFFFFF";
 
@@ -181,7 +181,7 @@
     if (!opened) {
       opened = true;
       addMsg(
-        "Hi, I'm Scout! \uD83D\uDC1D I help out here at HiveClicks. Tell me a bit about your business and what you're looking to grow — SEO, ads, website, social media, video, or automation — and I'll point you in the right direction. Along the way I'll just grab your name, phone and email so our team can follow up.",
+        "Hi, I'm Scout! \uD83D\uDC1D I help out here at HiveClicks. To get you to the right person fast, could you share:\n\u2022 Your name\n\u2022 Business/company name\n\u2022 Email\n\u2022 Phone number\n\u2022 What you're looking for help with (SEO, ads, website, social media, video, or automation)\n\nOr just ask me a question first — happy to help either way!",
         "bot"
       );
     }
