@@ -206,6 +206,12 @@
     notifyEndSession();
   });
   window.addEventListener("beforeunload", notifyEndSession);
+
+  var idleTimer = null;
+  function resetIdleTimer() {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(notifyEndSession, 15000);
+  }
   greetClose.addEventListener("click", function (e) {
     e.stopPropagation();
     greet.style.display = "none";
@@ -224,6 +230,7 @@
     busy = true;
     sendBtn.disabled = true;
     showTyping();
+    resetIdleTimer();
 
     fetch(API_BASE + "/api/chat", {
       method: "POST",
@@ -238,10 +245,12 @@
         hideTyping();
         addMsg(data.reply || "Sorry, could you rephrase that?", "bot");
         if (data.unresolved) addFallback();
+        resetIdleTimer();
       })
       .catch(function () {
         hideTyping();
         addFallback();
+        resetIdleTimer();
       })
       .finally(function () {
         busy = false;
