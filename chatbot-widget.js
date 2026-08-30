@@ -43,14 +43,16 @@
 
   // ---------- styles ----------
   var css = "\
-    .hc-launcher{position:fixed;bottom:22px;right:22px;width:60px;height:60px;\
-      background:" + INK + ";border-radius:16px 16px 16px 4px;cursor:pointer;\
+    .hc-launcher{position:fixed;bottom:100px;right:22px;width:64px;height:64px;\
+      background:" + HONEY + ";clip-path:polygon(25% 3%,75% 3%,100% 50%,75% 97%,25% 97%,0% 50%);cursor:pointer;\
       display:flex;align-items:center;justify-content:center;\
-      box-shadow:0 8px 24px rgba(20,23,26,.28);z-index:999998;\
-      border:2px solid " + HONEY + ";transition:transform .15s ease;}\
-    .hc-launcher:hover{transform:translateY(-2px);}\
-    .hc-launcher svg{width:28px;height:28px;}\
-    .hc-greet{position:fixed;bottom:32px;right:92px;max-width:230px;\
+      box-shadow:0 8px 24px rgba(20,23,26,.32);z-index:999998;\
+      transition:transform .15s ease;}\
+    .hc-launcher:hover{transform:translateY(-2px) scale(1.03);}\
+    .hc-launcher-inner{width:54px;height:54px;background:" + INK + ";\
+      clip-path:polygon(25% 3%,75% 3%,100% 50%,75% 97%,25% 97%,0% 50%);\
+      display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1;}\
+    .hc-greet{position:fixed;bottom:114px;right:96px;max-width:230px;\
       background:" + WHITE + ";color:" + INK + ";padding:12px 14px;border-radius:12px 12px 4px 12px;\
       font:500 13.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;\
       box-shadow:0 6px 20px rgba(20,23,26,.16);z-index:999997;\
@@ -58,7 +60,7 @@
     .hc-greet button{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;\
       background:" + INK + ";color:#fff;border:none;font-size:12px;cursor:pointer;line-height:1;}\
     @keyframes hc-pop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}\
-    .hc-panel{position:fixed;bottom:96px;right:22px;width:360px;max-width:92vw;height:520px;max-height:75vh;\
+    .hc-panel{position:fixed;bottom:174px;right:22px;width:360px;max-width:92vw;height:520px;max-height:75vh;\
       background:" + CREAM + ";border-radius:16px;box-shadow:0 16px 48px rgba(20,23,26,.3);\
       display:none;flex-direction:column;overflow:hidden;z-index:999999;\
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}\
@@ -88,7 +90,7 @@
     .hc-fallback{margin-top:6px;font-size:12px;color:" + SLATE + ";}\
     .hc-fallback a{color:" + HONEY_DARK + ";font-weight:600;text-decoration:none;}\
     @media (max-width:480px){.hc-panel{right:0;bottom:0;width:100%;height:100%;max-height:100%;border-radius:0;}\
-      .hc-launcher{bottom:16px;right:16px;}.hc-greet{right:16px;bottom:88px;}}\
+      .hc-launcher{bottom:90px;right:16px;}.hc-greet{right:16px;bottom:166px;}}\
   ";
   var styleEl = document.createElement("style");
   styleEl.textContent = css;
@@ -102,11 +104,11 @@
       \uD83D\uDC4B Need help growing your business online? Ask me anything!\
     </div>\
     <div class='hc-launcher' id='hcLauncher' aria-label='Open chat'>\
-      <svg viewBox='0 0 24 24' fill='none'><path d='M4 4h16v11H7l-3 3V4z' stroke='" + HONEY + "' stroke-width='2' stroke-linejoin='round'/></svg>\
+      <div class='hc-launcher-inner'>\uD83D\uDC1D</div>\
     </div>\
     <div class='hc-panel' id='hcPanel'>\
       <div class='hc-header'>\
-        <div><div class='hc-header-title'>HiveClicks Assistant</div><div class='hc-header-sub'>Usually replies in a few seconds</div></div>\
+        <div><div class='hc-header-title'>Scout \u2014 HiveClicks Assistant</div><div class='hc-header-sub'>Usually replies in a few seconds</div></div>\
         <button class='hc-close' id='hcClose' aria-label='Close chat'>&times;</button>\
       </div>\
       <div class='hc-body' id='hcBody'></div>\
@@ -179,7 +181,7 @@
     if (!opened) {
       opened = true;
       addMsg(
-        "Hi! \uD83D\uDC4B I'm the HiveClicks assistant. Tell me a bit about your business and what you're looking to grow — SEO, ads, website, social media, video, or automation — and I'll point you in the right direction. Along the way I'll just grab your name, phone and email so our team can follow up.",
+        "Hi, I'm Scout! \uD83D\uDC1D I help out here at HiveClicks. Tell me a bit about your business and what you're looking to grow — SEO, ads, website, social media, video, or automation — and I'll point you in the right direction. Along the way I'll just grab your name, phone and email so our team can follow up.",
         "bot"
       );
     }
