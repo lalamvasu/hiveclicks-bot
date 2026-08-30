@@ -29,7 +29,7 @@ app.get("/widget/chatbot-widget.js", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const BUSINESS = {
   name: "HiveClicks",
@@ -163,6 +163,7 @@ async function sendTranscriptEmail(session, pageUrl) {
   const { lead, transcript } = session;
   const transcriptText = transcript.map((t) => `${t.role === "user" ? "Visitor" : "Scout"}: ${t.text}`).join("\n");
 
+  console.log(`[end-session] Sending transcript email to ${process.env.LEAD_NOTIFY_TO || BUSINESS.email}...`);
   await transport.sendMail({
     from: process.env.SMTP_USER,
     to: process.env.LEAD_NOTIFY_TO || BUSINESS.email,
@@ -177,6 +178,7 @@ async function sendTranscriptEmail(session, pageUrl) {
       `Page: ${pageUrl || "-"}\n\n` +
       `--- Conversation ---\n${transcriptText}\n`,
   });
+  console.log("[end-session] Transcript email sent successfully.");
 }
 
 app.get("/health", (req, res) => res.json({ ok: true }));
@@ -189,6 +191,7 @@ app.post("/api/chat", async (req, res) => {
     }
     const text = String(message).slice(0, 2000).trim();
     const session = getSession(sessionId);
+    session.transcriptSent = false; // new activity — any future end-of-session should send an updated transcript
     session.transcript.push({ role: "user", text, stage: session.stage });
 
     let replyText;
@@ -239,8 +242,13 @@ app.post("/api/chat", async (req, res) => {
 app.post("/api/end-session", async (req, res) => {
   try {
     const { sessionId, pageUrl } = req.body || {};
-    if (!sessionId || !sessions.has(sessionId)) return res.status(200).json({ ok: true });
+    console.log(`[end-session] Hit for sessionId=${sessionId}`);
+    if (!sessionId || !sessions.has(sessionId)) {
+      console.log("[end-session] No matching session found — nothing to send.");
+      return res.status(200).json({ ok: true });
+    }
     const session = sessions.get(sessionId);
+    console.log(`[end-session] transcript length=${session.transcript.length}, transcriptSent=${session.transcriptSent}`);
     if (session.transcript.length === 0 || session.transcriptSent) {
       return res.status(200).json({ ok: true });
     }
@@ -248,11 +256,14 @@ app.post("/api/end-session", async (req, res) => {
     await sendTranscriptEmail(session, pageUrl);
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("end-session error:", err.message);
+    console.error("[end-session] error:", err.message);
     res.status(200).json({ ok: true });
   }
 });
 
 app.listen(PORT, () => {
   console.log(`HiveClicks chat backend running on port ${PORT}`);
+  console.log(`SMTP configured: ${Boolean(process.env.SMTP_USER && process.env.SMTP_PASS)}`);
+  console.log(`SHEET_WEBHOOK_URL configured: ${Boolean(process.env.SHEET_WEBHOOK_URL)}`);
+  console.log(`GROQ_API_KEY configured: ${Boolean(process.env.GROQ_API_KEY)}`);
 });
