@@ -2,13 +2,14 @@
  * HiveClicks Chat Assistant — backend
  * ------------------------------------
  * Express server that:
- *  1. Answers visitor questions using Gemini (free tier), grounded in a
- *     system prompt describing HiveClicks' services.
- *  2. Naturally collects name / phone / email / project need over the
- *     conversation, and once all four are present, emails you the lead
- *     and appends a row to a Google Sheet.
- *  3. Tells the frontend when a question couldn't be answered, so the
- *     widget can show the email/call/WhatsApp fallback.
+ *  1. Walks every visitor through a fixed sequence: name -> email -> phone
+ *     -> business name -> service needed. No AI involved in this part, so
+ *     it's fast and can't go out of order.
+ *  2. Once that's done, opens up to free-form Q&A about HiveClicks'
+ *     services, answered by Groq (free, fast, Llama-based).
+ *  3. Pushes the completed lead to your Google Sheet as soon as it's
+ *     collected, and emails you the FULL conversation transcript once the
+ *     visitor closes the chat (or leaves the page).
  *
  * See README.md for setup (API keys, Gmail app password, Google Sheet).
  */
@@ -17,21 +18,22 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
+const path = require("path");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.get("/widget/chatbot-widget.js", (req, res) => {
-  res.sendFile(require("path").join(__dirname, "chatbot-widget.js"));
+  res.sendFile(path.join(__dirname, "chatbot-widget.js"));
 });
 
 const PORT = process.env.PORT || 3000;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 const BUSINESS = {
   name: "HiveClicks",
-  email: process.env.CONTACT_EMAIL || "contact@hiveclicks.com", // shown to visitors
+  email: process.env.CONTACT_EMAIL || "contact@hiveclicks.com",
   phone: "+91 7337483053",
   whatsapp: "917337483053",
   location: "Visakhapatnam, India",
@@ -45,101 +47,81 @@ const BUSINESS = {
   ],
 };
 
-// ---------- in-memory session store (swap for Redis/DB if you expect real scale) ----------
-const sessions = new Map(); // sessionId -> { history: [...], lead: {...}, leadSent: bool }
+const sessions = new Map();
+
+const STAGE_PROMPTS = {
+  name: "Nice to meet you! What's the best email to reach you at?",
+  email: "Great, thank you. And a phone number where our team can reach you?",
+  phone: "Got it. What's your business or company name?",
+  business:
+    "And what are you looking for help with — SEO, ads, website, social media, video, or automation?",
+};
 
 function getSession(id) {
   if (!sessions.has(id)) {
     sessions.set(id, {
-      history: [],
-      lead: { name: null, business: null, phone: null, email: null, project: null },
-      leadSent: false,
+      stage: "name",
+      lead: { name: null, email: null, phone: null, business: null, project: null },
+      transcript: [],
+      sheetSent: false,
+      transcriptSent: false,
     });
   }
   return sessions.get(id);
 }
 
-// ---------- Gemini call ----------
-const SYSTEM_PROMPT = `You are Scout, the friendly 24/7 chat assistant on the ${BUSINESS.name} website, a digital marketing agency based in ${BUSINESS.location}. If asked your name, say you're Scout.
+const QA_SYSTEM_PROMPT = `You are Scout, the friendly 24/7 chat assistant on the ${BUSINESS.name} website, a digital marketing agency based in ${BUSINESS.location}. If asked your name, say you're Scout.
 
 SERVICES YOU CAN EXPLAIN:
 ${BUSINESS.services.map((s) => "- " + s).join("\n")}
 
-YOUR JOB, every turn:
-1. Early in the conversation, gather: name, business/company name, phone, email, and what service they need (their "project"). You can ask for a couple of these at once if it flows naturally — don't interrogate one field per turn if the visitor already volunteered several. If they ask a question before giving details, answer it first, then circle back to whatever's still missing.
-2. Answer the visitor's question if it's about ${BUSINESS.name}'s services, process, or how digital marketing generally works — keep answers short (2-4 sentences), warm, and non-salesy.
-3. If the visitor asks something you genuinely don't know (pricing specifics not given here, timelines, technical specifics about their existing site, anything outside these services), say plainly you don't have that detail and that the team will follow up — do NOT make up facts, prices, or promises.
-4. Never invent case studies, prices, or guarantees. If unsure, say so.
+The visitor has already given their contact details, so your only job now is to answer their questions about ${BUSINESS.name}'s services, process, or digital marketing in general — keep answers short (2-4 sentences), warm, and non-salesy.
 
-Respond ONLY with a JSON object matching this shape, no markdown fences, no extra text:
-{
-  "reply": "the message to show the visitor",
-  "unresolved": boolean,   // true if you could not actually answer their question/need and they should be pointed to email/call/WhatsApp
-  "lead": {
-    "name": string or null,      // fill in only if learned this turn or previously known; otherwise null
-    "business": string or null,  // their company/business name
-    "phone": string or null,
-    "email": string or null,
-    "project": string or null    // short description of what they want help with
-  }
-}
+If the visitor asks something you genuinely don't know (pricing specifics not given here, timelines, technical specifics about their existing site, anything outside these services), say plainly you don't have that detail and that the team will follow up — do NOT make up facts, prices, or promises. Never invent case studies, prices, or guarantees.
 
-Only include a field in "lead" as non-null once the visitor has actually stated it (in this message or earlier in the conversation, which you can see in the history). Never guess or fabricate contact details.`;
+Respond ONLY with a JSON object, no markdown fences, no extra text:
+{ "reply": "the message to show the visitor", "unresolved": boolean }`;
 
-async function callGemini(session, userMessage) {
-  session.history.push({ role: "user", parts: [{ text: userMessage }] });
+async function callGroq(session, userMessage) {
+  const messages = [
+    { role: "system", content: QA_SYSTEM_PROMPT },
+    ...session.transcript
+      .filter((t) => t.stage === "qa")
+      .slice(-16)
+      .map((t) => ({ role: t.role === "bot" ? "assistant" : "user", content: t.text })),
+    { role: "user", content: userMessage },
+  ];
 
-  const knownLead = session.lead;
-  const contextNote = {
-    role: "user",
-    parts: [
-      {
-        text:
-          "[context: lead fields already known so far — " +
-          JSON.stringify(knownLead) +
-          " — carry these forward in your JSON output unless the visitor updates them]",
-      },
-    ],
-  };
-
-  const body = {
-    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [...session.history.slice(0, -1), contextNote, session.history[session.history.length - 1]],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.4,
-    },
-  };
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const resp = await fetch(url, {
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages,
+      temperature: 0.4,
+      response_format: { type: "json_object" },
+    }),
   });
 
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error("Gemini API error: " + resp.status + " " + errText);
+    throw new Error("Groq API error: " + resp.status + " " + errText);
   }
 
   const data = await resp.json();
-  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!raw) throw new Error("Gemini returned no content");
+  const raw = data?.choices?.[0]?.message?.content;
+  if (!raw) throw new Error("Groq returned no content");
 
-  let parsed;
   try {
-    parsed = JSON.parse(raw);
+    return JSON.parse(raw);
   } catch (e) {
-    // Fallback: treat the raw text as a plain reply if it didn't return valid JSON
-    parsed = { reply: raw, unresolved: false, lead: knownLead };
+    return { reply: raw, unresolved: false };
   }
-
-  session.history.push({ role: "model", parts: [{ text: raw }] });
-  return parsed;
 }
 
-// ---------- lead delivery ----------
 let mailTransport = null;
 function getMailTransport() {
   if (mailTransport) return mailTransport;
@@ -149,28 +131,6 @@ function getMailTransport() {
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
   return mailTransport;
-}
-
-async function sendLeadEmail(lead, pageUrl) {
-  const transport = getMailTransport();
-  if (!transport) {
-    console.warn("SMTP not configured — skipping lead email. See README.md.");
-    return;
-  }
-  await transport.sendMail({
-    from: process.env.SMTP_USER,
-    to: process.env.LEAD_NOTIFY_TO || BUSINESS.email, // where YOU receive lead alerts
-    subject: `New website lead: ${lead.name || "Unknown"}`,
-    text:
-      `New lead from the HiveClicks chatbot\n\n` +
-      `Name: ${lead.name || "-"}\n` +
-      `Business: ${lead.business || "-"}\n` +
-      `Phone: ${lead.phone || "-"}\n` +
-      `Email: ${lead.email || "-"}\n` +
-      `Project: ${lead.project || "-"}\n` +
-      `Page: ${pageUrl || "-"}\n` +
-      `Time: ${new Date().toISOString()}\n`,
-  });
 }
 
 async function sendLeadToSheet(lead, pageUrl) {
@@ -194,11 +154,31 @@ async function sendLeadToSheet(lead, pageUrl) {
   });
 }
 
-function leadIsComplete(lead) {
-  return Boolean(lead.name && lead.phone && lead.email);
+async function sendTranscriptEmail(session, pageUrl) {
+  const transport = getMailTransport();
+  if (!transport) {
+    console.warn("SMTP not configured — skipping transcript email. See README.md.");
+    return;
+  }
+  const { lead, transcript } = session;
+  const transcriptText = transcript.map((t) => `${t.role === "user" ? "Visitor" : "Scout"}: ${t.text}`).join("\n");
+
+  await transport.sendMail({
+    from: process.env.SMTP_USER,
+    to: process.env.LEAD_NOTIFY_TO || BUSINESS.email,
+    subject: `Chat transcript: ${lead.name || "Unknown visitor"}`,
+    text:
+      `Full chat transcript from the HiveClicks chatbot\n\n` +
+      `Name: ${lead.name || "-"}\n` +
+      `Business: ${lead.business || "-"}\n` +
+      `Phone: ${lead.phone || "-"}\n` +
+      `Email: ${lead.email || "-"}\n` +
+      `Project: ${lead.project || "-"}\n` +
+      `Page: ${pageUrl || "-"}\n\n` +
+      `--- Conversation ---\n${transcriptText}\n`,
+  });
 }
 
-// ---------- routes ----------
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.post("/api/chat", async (req, res) => {
@@ -207,33 +187,69 @@ app.post("/api/chat", async (req, res) => {
     if (!sessionId || !message) {
       return res.status(400).json({ reply: "Missing sessionId or message." });
     }
-
+    const text = String(message).slice(0, 2000).trim();
     const session = getSession(sessionId);
-    const result = await callGemini(session, String(message).slice(0, 2000));
+    session.transcript.push({ role: "user", text, stage: session.stage });
 
-    // merge any newly-learned lead fields
-    if (result.lead) {
-      session.lead.name = result.lead.name ?? session.lead.name;
-      session.lead.business = result.lead.business ?? session.lead.business;
-      session.lead.phone = result.lead.phone ?? session.lead.phone;
-      session.lead.email = result.lead.email ?? session.lead.email;
-      session.lead.project = result.lead.project ?? session.lead.project;
+    let replyText;
+    let unresolved = false;
+
+    if (session.stage === "name") {
+      session.lead.name = text;
+      replyText = `Nice to meet you, ${text}! ${STAGE_PROMPTS.name}`;
+      session.stage = "email";
+    } else if (session.stage === "email") {
+      session.lead.email = text;
+      replyText = STAGE_PROMPTS.email;
+      session.stage = "phone";
+    } else if (session.stage === "phone") {
+      session.lead.phone = text;
+      replyText = STAGE_PROMPTS.phone;
+      session.stage = "business";
+    } else if (session.stage === "business") {
+      session.lead.business = text;
+      replyText = STAGE_PROMPTS.business;
+      session.stage = "service";
+    } else if (session.stage === "service") {
+      session.lead.project = text;
+      replyText = `Thanks, ${session.lead.name || "there"}! I've passed your details to our team and someone will reach out soon. In the meantime, feel free to ask me anything about our services — or just close this chat whenever you're done.`;
+      session.stage = "qa";
+
+      if (!session.sheetSent) {
+        session.sheetSent = true;
+        sendLeadToSheet(session.lead, pageUrl).catch((e) => console.error("Sheet push failed:", e.message));
+      }
+    } else {
+      const result = await callGroq(session, text);
+      replyText = result.reply;
+      unresolved = Boolean(result.unresolved);
     }
 
-    if (!session.leadSent && leadIsComplete(session.lead)) {
-      session.leadSent = true; // set before awaiting, so we never double-send
-      Promise.all([sendLeadEmail(session.lead, pageUrl), sendLeadToSheet(session.lead, pageUrl)]).catch((e) =>
-        console.error("Lead delivery failed:", e.message)
-      );
-    }
-
-    res.json({ reply: result.reply, unresolved: Boolean(result.unresolved) });
+    session.transcript.push({ role: "bot", text: replyText, stage: session.stage });
+    res.json({ reply: replyText, unresolved });
   } catch (err) {
     console.error(err);
     res.status(200).json({
       reply: "Sorry, I'm having trouble right now.",
       unresolved: true,
     });
+  }
+});
+
+app.post("/api/end-session", async (req, res) => {
+  try {
+    const { sessionId, pageUrl } = req.body || {};
+    if (!sessionId || !sessions.has(sessionId)) return res.status(200).json({ ok: true });
+    const session = sessions.get(sessionId);
+    if (session.transcript.length === 0 || session.transcriptSent) {
+      return res.status(200).json({ ok: true });
+    }
+    session.transcriptSent = true;
+    await sendTranscriptEmail(session, pageUrl);
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error("end-session error:", err.message);
+    res.status(200).json({ ok: true });
   }
 });
 
