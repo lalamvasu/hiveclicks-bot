@@ -127,7 +127,8 @@ async function sendLeadToSheet(lead, pageUrl) {
     console.warn("SHEET_WEBHOOK_URL not configured — skipping Google Sheet log. See README.md.");
     return;
   }
-  await fetch(webhook, {
+  console.log(`[sheet] Pushing lead to Google Sheet: ${lead.name}, ${lead.business}...`);
+  const resp = await fetch(webhook, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -140,6 +141,8 @@ async function sendLeadToSheet(lead, pageUrl) {
       page: pageUrl || "",
     }),
   });
+  const respText = await resp.text();
+  console.log(`[sheet] Response status=${resp.status}, body=${respText}`);
 }
 
 async function sendTranscriptEmail(session, pageUrl) {
