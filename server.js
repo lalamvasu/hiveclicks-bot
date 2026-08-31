@@ -17,7 +17,6 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
@@ -122,17 +121,6 @@ async function callGroq(session, userMessage) {
   }
 }
 
-let mailTransport = null;
-function getMailTransport() {
-  if (mailTransport) return mailTransport;
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  mailTransport = nodemailer.createTransport({
-    service: process.env.SMTP_SERVICE || "gmail",
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-  return mailTransport;
-}
-
 async function sendLeadToSheet(lead, pageUrl) {
   const webhook = process.env.SHEET_WEBHOOK_URL;
   if (!webhook) {
@@ -155,30 +143,42 @@ async function sendLeadToSheet(lead, pageUrl) {
 }
 
 async function sendTranscriptEmail(session, pageUrl) {
-  const transport = getMailTransport();
-  if (!transport) {
-    console.warn("SMTP not configured — skipping transcript email. See README.md.");
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("RESEND_API_KEY not configured — skipping transcript email. See README.md.");
     return;
   }
   const { lead, transcript } = session;
   const transcriptText = transcript.map((t) => `${t.role === "user" ? "Visitor" : "Scout"}: ${t.text}`).join("\n");
+  const to = process.env.LEAD_NOTIFY_TO || BUSINESS.email;
 
-  console.log(`[end-session] Sending transcript email to ${process.env.LEAD_NOTIFY_TO || BUSINESS.email}...`);
-  await transport.sendMail({
-    from: process.env.SMTP_USER,
-    to: process.env.LEAD_NOTIFY_TO || BUSINESS.email,
-    subject: `Chat transcript: ${lead.name || "Unknown visitor"}`,
-    text:
-      `Full chat transcript from the HiveClicks chatbot\n\n` +
-      `Name: ${lead.name || "-"}\n` +
-      `Business: ${lead.business || "-"}\n` +
-      `Phone: ${lead.phone || "-"}\n` +
-      `Email: ${lead.email || "-"}\n` +
-      `Project: ${lead.project || "-"}\n` +
-      `Page: ${pageUrl || "-"}\n\n` +
-      `--- Conversation ---\n${transcriptText}\n`,
+  console.log(`[end-session] Sending transcript email to ${to} via Resend...`);
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "HiveClicks Bot <onboarding@resend.dev>",
+      to: [to],
+      subject: `Chat transcript: ${lead.name || "Unknown visitor"}`,
+      text:
+        `Full chat transcript from the HiveClicks chatbot\n\n` +
+        `Name: ${lead.name || "-"}\n` +
+        `Business: ${lead.business || "-"}\n` +
+        `Phone: ${lead.phone || "-"}\n` +
+        `Email: ${lead.email || "-"}\n` +
+        `Project: ${lead.project || "-"}\n` +
+        `Page: ${pageUrl || "-"}\n\n` +
+        `--- Conversation ---\n${transcriptText}\n`,
+    }),
   });
-  console.log("[end-session] Transcript email sent successfully.");
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error("Resend API error: " + resp.status + " " + errText);
+  }
+  console.log("[end-session] Transcript email sent successfully via Resend.");
 }
 
 app.get("/health", (req, res) => res.json({ ok: true }));
@@ -263,7 +263,7 @@ app.post("/api/end-session", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`HiveClicks chat backend running on port ${PORT}`);
-  console.log(`SMTP configured: ${Boolean(process.env.SMTP_USER && process.env.SMTP_PASS)}`);
+  console.log(`RESEND_API_KEY configured: ${Boolean(process.env.RESEND_API_KEY)}`);
   console.log(`SHEET_WEBHOOK_URL configured: ${Boolean(process.env.SHEET_WEBHOOK_URL)}`);
   console.log(`GROQ_API_KEY configured: ${Boolean(process.env.GROQ_API_KEY)}`);
 });
