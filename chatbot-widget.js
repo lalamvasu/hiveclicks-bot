@@ -34,12 +34,8 @@
       return v.toString(16);
     });
   }
-  var SESSION_KEY = "hiveclicks_chat_session";
-  var sessionId = localStorage.getItem(SESSION_KEY);
-  if (!sessionId) {
-    sessionId = uuid();
-    localStorage.setItem(SESSION_KEY, sessionId);
-  }
+  // New conversation on every page load, so the chat always starts at the name question
+  var sessionId = uuid();
 
   // ---------- styles ----------
   var css = "\
@@ -60,7 +56,7 @@
     .hc-greet button{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;\
       background:" + INK + ";color:#fff;border:none;font-size:12px;cursor:pointer;line-height:1;}\
     @keyframes hc-pop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}\
-    .hc-panel{position:fixed;bottom:174px;right:22px;width:360px;max-width:92vw;height:520px;max-height:75vh;\
+    .hc-panel{position:fixed;bottom:174px;right:22px;width:360px;max-width:92vw;height:440px;max-height:calc(100vh - 200px);\
       background:" + CREAM + ";border-radius:16px;box-shadow:0 16px 48px rgba(20,23,26,.3);\
       display:none;flex-direction:column;overflow:hidden;z-index:999999;\
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}\
@@ -89,7 +85,7 @@
     .hc-send:disabled{opacity:.4;cursor:default;}\
     .hc-fallback{margin-top:6px;font-size:12px;color:" + SLATE + ";}\
     .hc-fallback a{color:" + HONEY_DARK + ";font-weight:600;text-decoration:none;}\
-    @media (max-width:480px){.hc-panel{right:0;bottom:0;width:100%;height:100%;max-height:100%;border-radius:0;}\
+    @media (max-width:480px){.hc-panel{left:8px;right:8px;bottom:8px;width:auto;max-width:none;height:65vh;height:65dvh;max-height:calc(100vh - 90px);max-height:calc(100dvh - 90px);border-radius:16px;}\
       .hc-launcher{bottom:90px;right:16px;}.hc-greet{right:16px;bottom:166px;}}\
   ";
   var styleEl = document.createElement("style");
