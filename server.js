@@ -49,7 +49,7 @@ const BUSINESS = {
 const sessions = new Map();
 
 const STAGE_PROMPTS = {
-  name: "Nice to meet you! What's the best email to reach you at?",
+  name: "What's the best email to reach you at?",
   email: "Great, thank you. And a phone number where our team can reach you?",
   phone: "Got it. What's your business or company name?",
   business:
